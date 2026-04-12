@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
+#include <map>
 
 namespace Interpolation
 {
