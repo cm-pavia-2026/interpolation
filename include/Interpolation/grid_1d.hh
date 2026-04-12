@@ -119,6 +119,15 @@ struct Grid1D {
    }
 
    /**
+    * @brief Get Reference to standard grid for the given weight index
+    *
+    */
+   const Chebyshev::StandardGrid &get_std_grid(size_t j) const
+   {
+      return _stored_grids.at(_d_info.grid_sizes[_from_idx_to_inter[j]]);
+   }
+
+   /**
     * @brief Interpolate on the grid
     *
     * @tparam ReturnType The type of the output variable
@@ -145,73 +154,21 @@ struct Grid1D {
          auto supp = get_support_weight_aj(j);
          if (u < supp.first || u > supp.second) continue;
          if constexpr (cpt::InterpolateCompatibleIndex<ReturnType, InnerType>) {
-            res += input[_from_iw_to_ic[j]] * _weights[j](u);
-         } else if constexpr (cpt::InterpolateCompatibleEvaluate<ReturnType, InnerType, Args...>) {
-            res += input[_from_iw_to_ic[j]].Evaluate(std::forward<Args>(args)...) * _weights[j](u);
-         } else if constexpr (cpt::InterpolateCompatibleFunctor<ReturnType, InnerType, Args...>) {
-            res += input[_from_iw_to_ic[j]](std::forward<Args>(args)...) * _weights[j](u);
-         } else {
-            throw std::invalid_argument("Cannot interpolate");
-         }
-      }
-      return res;
-   }
-
-   /**
-    * @brief Interpolate and possibly extrapolate on the grid
-    *
-    * @tparam ReturnType The type of the output variable
-    * @tparam InnerType The type of the inner variable (indexable container, with elements of
-    * type ReturnType)
-    * @param y the point in which the interpolation is requested
-    * @param input The input discretization container, contains the discretized values on the
-    * grid
-    * @param make_zero Create a `zero` object of type ReturnType
-    * @return The interpolated/extrapolated value
-    *
-    * @warning ReturnType and InnerType must satisfy the `cpt::InterpolateCompatible<ReturnType,
-    * InnerType>` concept, which ensures that the InnerType can be properly indexed, multiplied
-    * by scalar values, and its element can be summed to a ReturnType variable
-    */
-   template <class ReturnType, class InnerType, class... Args>
-   requires cpt::InterpolateCompatible<ReturnType, InnerType, Args...>
-   ReturnType interpolate_extrp(double y, const InnerType &input,
-                                const std::function<ReturnType()> &make_zero, Args &&...args) const
-   {
-      const double u = _d_info.to_inter_space(y);
-      ReturnType res = make_zero();
-
-      int inter = -1;
-      for (size_t a = 0; a < _d_info.intervals.size(); a++) {
-         if (u >= _d_info.intervals[a].first && u <= _d_info.intervals[a].second) {
-            inter = (int)a;
-            break;
-         }
-      }
-
-      if (inter == -1) {
-         if (u <= _d_info.intervals[0].first) inter = 0;
-         if (u >= _d_info.intervals[_d_info.intervals.size() - 1].second)
-            inter = _d_info.intervals.size() - 1;
-      }
-
-      size_t low = _delim_indexes[inter];
-      size_t hig = _delim_indexes[inter + 1];
-
-      for (size_t j = low + 1; j < hig - 1; j++) {
-
-         if constexpr (cpt::InterpolateCompatibleIndex<ReturnType, InnerType>) {
-            res += input[_from_iw_to_ic[j]] * _weights_extrap[j](u);
+            res += input[_from_iw_to_ic[j]] * _weights[j](u, get_std_grid(j));
          } else if constexpr (cpt::InterpolateCompatibleEvaluate<ReturnType, InnerType, Args...>) {
             res += input[_from_iw_to_ic[j]].Evaluate(std::forward<Args>(args)...)
-                 * _weights_extrap[j](u);
+                 * _weights[j](u, get_std_grid(j));
          } else if constexpr (cpt::InterpolateCompatibleFunctor<ReturnType, InnerType, Args...>) {
-            res += input[_from_iw_to_ic[j]](std::forward<Args>(args)...) * _weights_extrap[j](u);
+            res += input[_from_iw_to_ic[j]](std::forward<Args>(args)...)
+                 * _weights[j](u, get_std_grid(j));
          } else {
             throw std::invalid_argument("Cannot interpolate");
          }
       }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 1baa7b08f9db4bb8c2df28451e33fe68dcba136e
       return res;
    }
 
@@ -244,12 +201,13 @@ struct Grid1D {
          auto supp = get_support_weight_aj(j);
          if (u < supp.first || u > supp.second) continue;
          if constexpr (cpt::InterpolateCompatibleIndex<ReturnType, InnerType>) {
-            res += input[_from_iw_to_ic[j]] * jac * _weights_der[j](u);
+            res += input[_from_iw_to_ic[j]] * jac * _weights_der[j](u, get_std_grid(j));
          } else if constexpr (cpt::InterpolateCompatibleEvaluate<ReturnType, InnerType, Args...>) {
             res += input[_from_iw_to_ic[j]].Evaluate(std::forward<Args>(args)...) * jac
-                 * _weights_der[j](u);
+                 * _weights_der[j](u, get_std_grid(j));
          } else if constexpr (cpt::InterpolateCompatibleFunctor<ReturnType, InnerType, Args...>) {
-            res += input[_from_iw_to_ic[j]](std::forward<Args>(args)...) * jac * _weights_der[j](u);
+            res += input[_from_iw_to_ic[j]](std::forward<Args>(args)...) * jac
+                 * _weights_der[j](u, get_std_grid(j));
          } else {
             throw std::invalid_argument("Cannot interpolate");
          }
@@ -311,14 +269,14 @@ struct Grid1D {
 
    /// Discretization infos
    SingleDiscretizationInfo _d_info;
+   /// Stored StandardGrids
+   std::map<size_t, Chebyshev::StandardGrid> _stored_grids;
    /// The intepolating weights
-   std::vector<std::function<double(double)>> _weights;
-   /// The intepolating weights, with possible extrapolation
-   std::vector<std::function<double(double)>> _weights_extrap;
+   std::vector<std::function<double(double, const Chebyshev::StandardGrid &)>> _weights;
    /// Derivative of the interpolating weights (dw / du)
-   std::vector<std::function<double(double)>> _weights_der;
+   std::vector<std::function<double(double, const Chebyshev::StandardGrid &)>> _weights_der;
    /// Weights minus 1 (w-1)
-   std::vector<std::function<double(double)>> _weights_sub;
+   std::vector<std::function<double(double, const Chebyshev::StandardGrid &)>> _weights_sub;
    /// Grid1D nodes in physical space
    std::vector<double> _coord;
    /// Grid1D nodes in interpolation space
